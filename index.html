@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<title>Battle Items v9.9</title>
+<title>Battle Items v9.8</title>
 <style>
 :root{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color-scheme:dark}
 *{box-sizing:border-box} body{margin:0;background:#080a0f;color:#fff}
@@ -43,7 +43,7 @@ dialog::backdrop{background:#000a}.row{display:grid;grid-template-columns:1fr 11
 </style>
 </head>
 <body><main class="app">
-<h1>⚔️ Battle Items <span style="font-size:15px;color:#65d9c4">v9.9</span></h1>
+<h1>⚔️ Battle Items <span style="font-size:15px;color:#65d9c4">v9.8</span></h1>
 <div class="sub">リスナーごとに複数アイテムをまとめて管理</div>
 <div class="stats">
 <div class="stat"><b id="peopleCount">0</b>リスナー</div>
@@ -118,15 +118,6 @@ function remainingInfo(ms){
  return {text:`残り${days}日`,cls:days<=2?'warn':''};
 }
 function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-function groupItems(items){
- const m=new Map();
- (items||[]).forEach(i=>{const key=String(i.name||'').trim();if(!m.has(key))m.set(key,{name:key,items:[]});m.get(key).items.push(i)});
- return [...m.values()].sort((a,b)=>{
-  const am=a.items.filter(i=>(Number(i.qty)||0)>0).map(i=>remainingMs(i));
-  const bm=b.items.filter(i=>(Number(i.qty)||0)>0).map(i=>remainingMs(i));
-  return (am.length?Math.min(...am):Infinity)-(bm.length?Math.min(...bm):Infinity);
- });
-}
 function nearestUrgency(p){
  const items=(p.items||[])
    .filter(i=>(Number(i.qty)||0)>0)
@@ -143,7 +134,7 @@ function nearestUrgency(p){
  }).join('')}</span>`;
 }
 function render(){
- const peopleSorted=[...people].sort((a,b)=>{
+ const peopleSorted=[...state.people].sort((a,b)=>{
    const minRemain=p=>{
      const active=(p.items||[]).filter(i=>(Number(i.qty)||0)>0);
      if(!active.length)return Infinity;
@@ -161,7 +152,7 @@ function render(){
  $('thirdCount').textContent=sumMatch(n=>n==='3位'||n==='３位');
  const list=$('list');
  if(!people.length){list.innerHTML='<div class="empty">まだリスナーが登録されていません</div>';return}
- list.innerHTML=peopleSorted.map(p=>`<article class="person ${collapsed.has(p.id)?'collapsed':''}" id="person-${p.id}">
+ list.innerHTML=people.map(p=>`<article class="person ${collapsed.has(p.id)?'collapsed':''}" id="person-${p.id}">
  <div class="personHead">
    <div class="personToggle" onclick="togglePerson('${p.id}')">
      <span class="chev">▼</span><div class="personName">👤 ${esc(p.name)}</div>
@@ -171,13 +162,10 @@ function render(){
    <button class="add" onclick="event.stopPropagation();openAdd('${p.id}')">＋ アイテム</button>
  </div>
  <div class="personBody">
- <div class="items">${p.items.length?groupItems(p.items).map(g=>{
-   const totalQty=g.items.reduce((a,i)=>a+(Number(i.qty)||0),0);
-   const totalUsed=g.items.reduce((a,i)=>a+(Number(i.used)||0),0);
-   const lots=g.items.filter(i=>(Number(i.qty)||0)>0).sort((a,b)=>remainingMs(a)-remainingMs(b));
-   const expiryHtml=lots.map(i=>{const ri=remainingInfo(remainingMs(i));return `<div class="days ${ri.cls}">${ri.text}${i.qty>1?` ×${i.qty}`:''}</div>`}).join('');
-   return `<div class="item"><div class="itemTop"><div><div class="itemName">${esc(g.name)} ×${totalQty}</div><div class="muted">使用 ${totalUsed}個</div></div><div style="display:grid;gap:4px;text-align:right">${expiryHtml||'<div class="days expired">在庫なし</div>'}</div></div>
-   <div class="controls"><button class="secondary" onclick='useGroupItem(${JSON.stringify(p.id)},${JSON.stringify(g.name)})'>使用 −1</button><button class="secondary" onclick='plusGroupItem(${JSON.stringify(p.id)},${JSON.stringify(g.name)})'>＋1</button><button class="danger" onclick='deleteGroupItem(${JSON.stringify(p.id)},${JSON.stringify(g.name)})'>削除</button></div></div>`
+ <div class="items">${p.items.length?p.items.map(i=>{
+   const ri=remainingInfo(remainingMs(i));
+   return `<div class="item"><div class="itemTop"><div><div class="itemName">${esc(i.name)} ×${i.qty}</div><div class="muted">使用 ${i.used||0}個</div></div><div class="days ${ri.cls}">${ri.text}</div></div>
+   <div class="controls"><button class="secondary" onclick="useItem('${p.id}','${i.id}')">使用 −1</button><button class="secondary" onclick="plusItem('${p.id}','${i.id}')">＋1</button><button class="danger" onclick="deleteItem('${p.id}','${i.id}')">削除</button></div></div>`
  }).join(''):'<div class="muted" style="padding:12px 0">アイテムなし</div>'}</div>
  <div class="controls"><button class="danger" onclick="deletePerson('${p.id}')">リスナーを削除</button></div>
  </div>
@@ -205,18 +193,9 @@ $('saveItem').onclick=()=>{
  p.items.push({id:String(now+Math.random()),name,qty,used:0,startDays,startDate:now,expiresAt:now+startDays*86400000});
  safeSave();render();$('itemDialog').close();
 };
-window.useGroupItem=(pid,name)=>{
- const p=people.find(x=>x.id===pid);if(!p)return;
- const candidates=p.items.filter(i=>i.name===name&&(Number(i.qty)||0)>0).sort((a,b)=>remainingMs(a)-remainingMs(b));
- const i=candidates[0];if(!i)return;i.qty--;i.used=(i.used||0)+1;safeSave();render();
-}
-window.plusGroupItem=(pid,name)=>{
- const p=people.find(x=>x.id===pid);if(!p)return;const now=Date.now();
- p.items.push({id:String(now+Math.random()),name,qty:1,used:0,startDays:5,startDate:now,expiresAt:now+5*86400000});safeSave();render();
-}
-window.deleteGroupItem=(pid,name)=>{
- const p=people.find(x=>x.id===pid);if(!p)return;if(confirm(`${name}をすべて削除しますか？`)){p.items=p.items.filter(x=>x.name!==name);safeSave();render()}
-}
+window.useItem=(pid,iid)=>{const i=people.find(p=>p.id===pid)?.items.find(x=>x.id===iid);if(!i||i.qty<=0)return;i.qty--;i.used=(i.used||0)+1;safeSave();render()}
+window.plusItem=(pid,iid)=>{const i=people.find(p=>p.id===pid)?.items.find(x=>x.id===iid);if(!i)return;i.qty++;safeSave();render()}
+window.deleteItem=(pid,iid)=>{const p=people.find(x=>x.id===pid);if(!p)return;if(confirm('このアイテムを削除しますか？')){p.items=p.items.filter(x=>x.id!==iid);safeSave();render()}}
 window.deletePerson=pid=>{if(confirm('このリスナーと所持アイテムをすべて削除しますか？')){people=people.filter(p=>p.id!==pid);safeSave();render()}}
 safeLoad();render();setInterval(render,30000);
 </script></body></html>
