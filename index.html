@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<title>Battle Items v8</title>
+<title>Battle Items v9</title>
 <style>
 :root{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color-scheme:dark}
 *{box-sizing:border-box} body{margin:0;background:#080a0f;color:#fff}
@@ -29,7 +29,7 @@ dialog::backdrop{background:#000a}.row{display:grid;grid-template-columns:1fr 11
 </style>
 </head>
 <body><main class="app">
-<h1>⚔️ Battle Items <span style="font-size:15px;color:#65d9c4">v8</span></h1>
+<h1>⚔️ Battle Items <span style="font-size:15px;color:#65d9c4">v9</span></h1>
 <div class="sub">リスナーごとに複数アイテムをまとめて管理</div>
 <div class="stats"><div class="stat"><b id="peopleCount">0</b>リスナー</div><div class="stat"><b id="itemCount">0</b>総アイテム数</div></div>
 
@@ -62,14 +62,41 @@ dialog::backdrop{background:#000a}.row{display:grid;grid-template-columns:1fr 11
 </dialog>
 
 <script>
-const KEY='battle-items-v8-people';
+const KEY='battle-items-v9-people';
+const OLD_KEY='battle-items-v8-people';
 let people=[];
 const $=id=>document.getElementById(id);
-function safeLoad(){try{const x=JSON.parse(localStorage.getItem(KEY)||'[]');if(Array.isArray(x))people=x}catch(e){}}
+function safeLoad(){try{
+ let raw=localStorage.getItem(KEY);
+ if(!raw){
+   const old=JSON.parse(localStorage.getItem(OLD_KEY)||'[]');
+   if(Array.isArray(old)&&old.length){
+     const now=Date.now();
+     old.forEach(p=>(p.items||[]).forEach(i=>{
+       const oldStart=i.startDate||now;
+       const elapsedDays=Math.max(0,Math.floor((new Date().setHours(0,0,0,0)-oldStart)/86400000));
+       const left=Math.max(0,(i.startDays||5)-elapsedDays);
+       i.startDate=now;i.expiresAt=now+left*86400000;
+     }));
+     people=old;safeSave();return;
+   }
+ }
+ const x=JSON.parse(raw||'[]');if(Array.isArray(x))people=x
+}catch(e){}}
 function safeSave(){try{localStorage.setItem(KEY,JSON.stringify(people))}catch(e){}}
-function todayKey(){const d=new Date();return new Date(d.getFullYear(),d.getMonth(),d.getDate()).getTime()}
-function remaining(it){return it.startDays-Math.floor((todayKey()-it.startDate)/86400000)}
-function daysText(n){if(n>0)return `残り${n}日`;if(n===0)return '本日期限';return '期限切れ'}
+function remainingMs(it){
+ const expiresAt=it.expiresAt ?? ((it.startDate||Date.now())+(it.startDays||5)*86400000);
+ return expiresAt-Date.now();
+}
+function remainingInfo(ms){
+ if(ms<=0)return {text:'期限切れ',cls:'expired'};
+ const mins=Math.ceil(ms/60000);
+ if(mins<60)return {text:`残り${mins}分`,cls:'warn'};
+ const hours=Math.ceil(ms/3600000);
+ if(ms<86400000)return {text:`残り${hours}時間`,cls:'warn'};
+ const days=Math.ceil(ms/86400000);
+ return {text:`残り${days}日`,cls:days<=2?'warn':''};
+}
 function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function render(){
  $('peopleCount').textContent=people.length;
@@ -80,8 +107,8 @@ function render(){
  <div class="personHead"><div class="personName">👤 ${esc(p.name)}</div>
  <button class="add" onclick="openAdd('${p.id}')">＋ アイテム</button></div>
  <div class="items">${p.items.length?p.items.map(i=>{
-   const r=remaining(i), cls=r<0?'expired':r<=2?'warn':'';
-   return `<div class="item"><div class="itemTop"><div><div class="itemName">${esc(i.name)} ×${i.qty}</div><div class="muted">使用 ${i.used||0}個</div></div><div class="days ${cls}">${daysText(r)}</div></div>
+   const ri=remainingInfo(remainingMs(i));
+   return `<div class="item"><div class="itemTop"><div><div class="itemName">${esc(i.name)} ×${i.qty}</div><div class="muted">使用 ${i.used||0}個</div></div><div class="days ${ri.cls}">${ri.text}</div></div>
    <div class="controls"><button class="secondary" onclick="useItem('${p.id}','${i.id}')">使用 −1</button><button class="secondary" onclick="plusItem('${p.id}','${i.id}')">＋1</button><button class="danger" onclick="deleteItem('${p.id}','${i.id}')">削除</button></div></div>`
  }).join(''):'<div class="muted" style="padding:12px 0">アイテムなし</div>'}</div>
  <div class="controls"><button class="danger" onclick="deletePerson('${p.id}')">リスナーを削除</button></div>
@@ -100,12 +127,13 @@ $('saveItem').onclick=()=>{
  const p=people.find(x=>x.id===$('personId').value); const name=$('itemName').value.trim();
  const qty=Math.max(1,parseInt($('qty').value)||1); if(!p||!name){alert('アイテム名を入力してね');return}
  const startDays=name.includes('グローブ')?5:Math.max(0,parseInt($('days').value)||0);
- p.items.push({id:String(Date.now()+Math.random()),name,qty,used:0,startDays,startDate:todayKey()});
+ const now=Date.now();
+ p.items.push({id:String(now+Math.random()),name,qty,used:0,startDays,startDate:now,expiresAt:now+startDays*86400000});
  safeSave();render();$('itemDialog').close();
 };
 window.useItem=(pid,iid)=>{const i=people.find(p=>p.id===pid)?.items.find(x=>x.id===iid);if(!i||i.qty<=0)return;i.qty--;i.used=(i.used||0)+1;safeSave();render()}
 window.plusItem=(pid,iid)=>{const i=people.find(p=>p.id===pid)?.items.find(x=>x.id===iid);if(!i)return;i.qty++;safeSave();render()}
 window.deleteItem=(pid,iid)=>{const p=people.find(x=>x.id===pid);if(!p)return;if(confirm('このアイテムを削除しますか？')){p.items=p.items.filter(x=>x.id!==iid);safeSave();render()}}
 window.deletePerson=pid=>{if(confirm('このリスナーと所持アイテムをすべて削除しますか？')){people=people.filter(p=>p.id!==pid);safeSave();render()}}
-safeLoad();render();
+safeLoad();render();setInterval(render,30000);
 </script></body></html>
