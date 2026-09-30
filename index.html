@@ -134,7 +134,7 @@ function nearestUrgency(p){
  }).join('')}</span>`;
 }
 function render(){
- const peopleSorted=[...state.people].sort((a,b)=>{
+ const peopleSorted=[...people].sort((a,b)=>{
    const minRemain=p=>{
      const active=(p.items||[]).filter(i=>(Number(i.qty)||0)>0);
      if(!active.length)return Infinity;
@@ -152,7 +152,7 @@ function render(){
  $('thirdCount').textContent=sumMatch(n=>n==='3位'||n==='３位');
  const list=$('list');
  if(!people.length){list.innerHTML='<div class="empty">まだリスナーが登録されていません</div>';return}
- list.innerHTML=people.map(p=>`<article class="person ${collapsed.has(p.id)?'collapsed':''}" id="person-${p.id}">
+ list.innerHTML=peopleSorted.map(p=>`<article class="person ${collapsed.has(p.id)?'collapsed':''}" id="person-${p.id}">
  <div class="personHead">
    <div class="personToggle" onclick="togglePerson('${p.id}')">
      <span class="chev">▼</span><div class="personName">👤 ${esc(p.name)}</div>
