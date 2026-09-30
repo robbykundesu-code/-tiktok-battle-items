@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<title>Battle Items v9.2</title>
+<title>Battle Items v9.3</title>
 <style>
 :root{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color-scheme:dark}
 *{box-sizing:border-box} body{margin:0;background:#080a0f;color:#fff}
@@ -30,14 +30,24 @@ button{border:0;border-radius:15px;padding:14px 16px;font-size:16px;font-weight:
 .empty{text-align:center;color:#8f99aa;padding:34px 0}
 dialog{border:1px solid #343c4e;border-radius:22px;background:#141824;color:#fff;width:min(92vw,520px);padding:18px}
 dialog::backdrop{background:#000a}.row{display:grid;grid-template-columns:1fr 110px;gap:10px}
-.stats{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:14px 0}.stat{background:#141824;border:1px solid #2b3242;border-radius:18px;padding:14px;text-align:center}.stat b{font-size:25px;display:block}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:14px 0}.stat{background:#141824;border:1px solid #2b3242;border-radius:18px;padding:14px;text-align:center}.stat b{font-size:25px;display:block}
 .note{font-size:12px;color:#8f99aa;margin-top:8px}
+.urgentBadge{font-size:12px;font-weight:900;border-radius:999px;padding:5px 8px;white-space:nowrap}
+.urgentSoon{background:#3a3016;color:#ffd36a}
+.urgentCritical{background:#3a2026;color:#ff9cab}
+.urgentExpired{background:#491c25;color:#ff7c8d}
+@media(max-width:480px){.stats{grid-template-columns:repeat(4,1fr)}.stat{padding:11px 5px}.stat b{font-size:21px}.stat{font-size:12px}.badge{display:none}}
 </style>
 </head>
 <body><main class="app">
-<h1>⚔️ Battle Items <span style="font-size:15px;color:#65d9c4">v9.2</span></h1>
+<h1>⚔️ Battle Items <span style="font-size:15px;color:#65d9c4">v9.3</span></h1>
 <div class="sub">リスナーごとに複数アイテムをまとめて管理</div>
-<div class="stats"><div class="stat"><b id="peopleCount">0</b>リスナー</div><div class="stat"><b id="itemCount">0</b>総アイテム数</div></div>
+<div class="stats">
+<div class="stat"><b id="peopleCount">0</b>リスナー</div>
+<div class="stat"><b id="boxingCount">0</b>🥊</div>
+<div class="stat"><b id="secondCount">0</b>2位</div>
+<div class="stat"><b id="thirdCount">0</b>3位</div>
+</div>
 
 <section class="panel">
 <label>新しいリスナー</label>
@@ -105,15 +115,29 @@ function remainingInfo(ms){
  return {text:`残り${days}日`,cls:days<=2?'warn':''};
 }
 function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function nearestUrgency(p){
+ const items=(p.items||[]).filter(i=>i.qty>0);
+ if(!items.length)return '';
+ const sorted=[...items].sort((a,b)=>remainingMs(a)-remainingMs(b));
+ const i=sorted[0], ms=remainingMs(i), info=remainingInfo(ms);
+ let cls='urgentSoon';
+ if(ms<=0)cls='urgentExpired'; else if(ms<3600000)cls='urgentCritical';
+ return `<span class="urgentBadge ${cls}">⚠️ ${esc(i.name)} ${info.text}</span>`;
+}
 function render(){
  $('peopleCount').textContent=people.length;
- $('itemCount').textContent=people.reduce((a,p)=>a+p.items.reduce((x,i)=>x+i.qty,0),0);
+ const allItems=people.flatMap(p=>p.items||[]);
+ const sumNamed=(label)=>allItems.filter(i=>i.name.trim()===label).reduce((a,i)=>a+i.qty,0);
+ $('boxingCount').textContent=sumNamed('🥊');
+ $('secondCount').textContent=sumNamed('2位');
+ $('thirdCount').textContent=sumNamed('3位');
  const list=$('list');
  if(!people.length){list.innerHTML='<div class="empty">まだリスナーが登録されていません</div>';return}
  list.innerHTML=people.map(p=>`<article class="person ${collapsed.has(p.id)?'collapsed':''}" id="person-${p.id}">
  <div class="personHead">
    <div class="personToggle" onclick="togglePerson('${p.id}')">
      <span class="chev">▼</span><div class="personName">👤 ${esc(p.name)}</div>
+     ${nearestUrgency(p)}
      <span class="badge">${p.items.length}種類 / ${p.items.reduce((a,i)=>a+i.qty,0)}個</span>
    </div>
    <button class="add" onclick="event.stopPropagation();openAdd('${p.id}')">＋ アイテム</button>
